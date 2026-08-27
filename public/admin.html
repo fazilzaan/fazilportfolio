@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fazil Zaan - Portfolio Manager</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="js/firebase-config.js"></script>
+    <script src="js/projects-data.js"></script>
+    <script src="js/portfolio-core.js"></script>
+    <style>
+        :root {
+            --black: #050505;
+            --gold: #D4AF37;
+            --white: #F5F5F7;
+            --card-bg: #1c1c1e;
+            --input-bg: #2c2c2e;
+            --border: rgba(255, 255, 255, 0.08);
+            --gold-hover: #bda030;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--black);
+            color: var(--white);
+            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+            overflow-x: hidden;
+        }
+
+        header {
+            height: 70px;
+            padding: 0 5vw;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(5, 5, 5, 0.8);
+            backdrop-filter: blur(20px);
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 100;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            box-sizing: border-box;
+        }
+
+        .logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            text-decoration: none;
+            color: var(--white);
+        }
+        .logo span { color: var(--gold); }
+
+        .header-links { display: flex; gap: 20px; align-items: center; }
+
+        .back-home {
+            text-decoration: none;
+            color: #888;
+            font-size: 0.9rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+        }
+        .back-home:hover { color: var(--gold); }
+
+        main {
+            padding: 120px 8vw 80px;
+            box-sizing: border-box;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .page-header { margin-bottom: 40px; }
+        .page-header h1 {
+            font-size: 2.8rem;
+            margin: 0;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+        }
+        .page-header p {
+            color: #888;
+            font-size: 1.1rem;
+            margin-top: 10px;
+            max-width: 700px;
+            line-height: 1.5;
+        }
+
+        .admin-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+        @media (max-width: 1024px) {
+            .admin-grid { grid-template-columns: 1fr; }
+        }
+
+        .admin-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 30px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: fit-content;
+        }
+        .admin-card h2 {
+            font-size: 1.5rem;
+            margin: 0 0 10px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #project-form { display: flex; flex-direction: column; gap: 22px; }
+        .form-group { display: flex; flex-direction: column; gap: 10px; }
+
+        label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #a1a1a6;
+        }
+
+        input[type="text"], input[type="email"], input[type="password"], select {
+            background-color: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--white);
+            font-size: 0.95rem;
+            font-family: inherit;
+            box-sizing: border-box;
+            width: 100%;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--gold);
+            box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15);
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 0.95rem;
+            color: var(--white);
+        }
+        .checkbox-label input {
+            accent-color: var(--gold);
+            width: 18px;
+            height: 18px;
+        }
+
+        .category-configs {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
+        .category-configs:empty { display: none; }
+
+        .file-dropzone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            position: relative;
+            cursor: pointer;
+        }
+        .file-dropzone.dragover {
+            border-color: var(--gold);
+            background: rgba(212, 175, 55, 0.05);
+        }
+        .file-dropzone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .file-dropzone-text { font-size: 0.9rem; color: #a1a1a6; }
+        .file-dropzone-text span { color: var(--gold); text-decoration: underline; }
+        .hint { font-size: 0.8rem; color: #666; margin: 2px 0 0; line-height: 1.4; }
+
+        .video-preview-wrapper {
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border);
+        }
+        .video-preview-wrapper video { width: 100%; height: 100%; object-fit: contain; }
+        .video-preview-placeholder {
+            color: #555;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .video-preview-placeholder svg { width: 40px; height: 40px; fill: currentColor; }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+        }
+        .btn-gold { background: var(--gold); color: var(--black); }
+        .btn-gold:hover { background: var(--gold-hover); }
+        .btn-secondary {
+            background: transparent;
+            color: #a1a1a6;
+            border: 1px solid var(--border);
+        }
+        .btn-danger {
+            background: rgba(255, 69, 58, 0.15);
+            color: #ff453a;
+            border: 1px solid rgba(255, 69, 58, 0.2);
+            font-size: 0.85rem;
+            padding: 8px 12px;
+        }
+        .btn-edit {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--white);
+            border: 1px solid var(--border);
+            font-size: 0.85rem;
+            padding: 8px 12px;
+        }
+
+        .sync-card {
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.08) 0%, rgba(5, 5, 5, 0) 100%);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+        }
+        .sync-status {
+            font-size: 0.85rem;
+            padding: 10px 15px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+        }
+
+        .projects-list-card { grid-column: 1 / -1; }
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem; }
+        th {
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--border);
+            padding: 16px;
+            color: #a1a1a6;
+        }
+        td {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr.editing-row td { background: rgba(212, 175, 55, 0.06); }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-gold {
+            background: rgba(212, 175, 55, 0.15);
+            color: var(--gold);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+        }
+        .badge-grey {
+            background: rgba(255, 255, 255, 0.05);
+            color: #a1a1a6;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .badge-tag {
+            background: #2c2c2e;
+            color: #c7c7cc;
+            margin: 0 5px 4px 0;
+            text-transform: capitalize;
+        }
+
+        .actions-cell { display: flex; gap: 8px; flex-wrap: wrap; }
+        .form-actions { display: flex; gap: 12px; margin-top: 4px; }
+
+        .status-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #1c1c1e;
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            padding: 14px 18px;
+            border-radius: 12px;
+            opacity: 0;
+            transform: translateY(12px);
+            transition: all 0.25s ease;
+            z-index: 2000;
+            pointer-events: none;
+        }
+        .status-toast.show { opacity: 1; transform: translateY(0); }
+
+        #auth-gate {
+            position: fixed;
+            inset: 0;
+            z-index: 500;
+            background: radial-gradient(ellipse at top, #1a1610 0%, var(--black) 55%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        #auth-gate.hidden { display: none; }
+        #admin-app.hidden { display: none; }
+
+        .auth-card {
+            width: min(420px, 92vw);
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 40px 32px;
+        }
+        .auth-card h1 {
+            margin: 8px 0;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+        .auth-card .subtitle {
+            text-align: center;
+            color: #888;
+            margin: 0 0 24px;
+            font-size: 0.95rem;
+        }
+        .auth-error {
+            display: none;
+            margin-bottom: 14px;
+            padding: 12px;
+            border-radius: 10px;
+            background: rgba(255, 80, 80, 0.12);
+            border: 1px solid rgba(255, 80, 80, 0.35);
+            color: #ff8a8a;
+            font-size: 0.9rem;
+        }
+        .auth-error.show { display: block; }
+    </style>
+</head>
+<body>
+    <div id="auth-gate">
+        <div class="auth-card">
+            <a class="logo" href="index.html" style="display:block; text-align:center;">Fazil<span>Zaan.</span></a>
+            <h1>Admin Sign In</h1>
+            <p class="subtitle">Use your Firebase Auth email and password.</p>
+            <div id="auth-error" class="auth-error"></div>
+            <form id="auth-form">
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label for="auth-email">Email</label>
+                    <input type="email" id="auth-email" required autocomplete="username">
+                </div>
+                <div class="form-group" style="margin-bottom:20px;">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-gold" style="width:100%;" id="auth-submit">Sign in</button>
+            </form>
+            <a class="back-home" href="index.html" style="display:block; text-align:center; margin-top:20px;">← Back to site</a>
+        </div>
+    </div>
+
+    <div id="admin-app" class="hidden">
+        <header>
+            <a href="index.html" class="logo">Fazil<span>Zaan.</span></a>
+            <div class="header-links">
+                <span id="admin-user-email" style="color:#888; font-size:0.85rem;"></span>
+                <a href="roles.html" class="back-home">Back to Gallery</a>
+                <button type="button" class="back-home" id="logout-btn">Log out</button>
+            </div>
+        </header>
+
+        <main>
+            <div class="page-header">
+                <h1>Creative Admin Dashboard</h1>
+                <p>Projects save to Firestore. Videos upload to Cloudinary. Deploy the site with Firebase Hosting.</p>
+            </div>
+
+            <div class="admin-grid">
+                <div class="admin-card" id="form-card">
+                    <h2 id="form-title">Add Project</h2>
+                    <form id="project-form">
+                        <input type="hidden" id="project-id" value="">
+
+                        <div class="form-group">
+                            <label for="project-title">Project title</label>
+                            <input type="text" id="project-title" required placeholder="e.g. Skillmount — Football Season Promo">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="project-credits">Credits</label>
+                            <input type="text" id="project-credits" required placeholder="e.g. Cinematography • Editor">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Show on pages</label>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="specialty" value="cinematographer" onchange="toggleSpecialtyConfigs()">
+                                    Cinematographer
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="specialty" value="editor" onchange="toggleSpecialtyConfigs()">
+                                    Video Editor
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="specialty" value="director" onchange="toggleSpecialtyConfigs()">
+                                    Assistant Director
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="category-configs" id="category-configs"></div>
+
+                        <div class="form-group">
+                            <label for="project-video">Video URL</label>
+                            <input type="text" id="project-video" placeholder="Cloudinary URL or existing video link">
+                            <p class="hint">Filled automatically after Cloudinary upload, or paste a URL.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Upload video to Cloudinary</label>
+                            <div class="file-dropzone" id="file-dropzone">
+                                <div class="file-dropzone-text" id="dropzone-text">Drop an MP4/MOV here or <span>browse</span></div>
+                                <input type="file" id="project-video-file" accept="video/mp4,video/quicktime,video/*">
+                            </div>
+                            <div id="upload-progress" style="display:none;">
+                                <div style="width:100%; background:#2c2c2e; height:8px; border-radius:4px; overflow:hidden; margin-top:8px;">
+                                    <div id="upload-progress-bar" style="width:0%; background:var(--gold); height:100%;"></div>
+                                </div>
+                                <p class="hint" id="upload-progress-text">Uploading…</p>
+                            </div>
+                            <p class="hint" id="cloudinary-status">Cloudinary unsigned upload ready when preset is configured.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="project-recent" checked>
+                                Feature in Recent Works
+                            </label>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-gold" style="flex:1;" id="submit-btn">Add Project</button>
+                            <button type="button" class="btn btn-secondary" id="cancel-btn" style="display:none;" onclick="resetForm()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:30px;">
+                    <div class="admin-card">
+                        <h2>Video Preview</h2>
+                        <div class="video-preview-wrapper">
+                            <video id="preview-player" controls muted style="display:none;"></video>
+                            <div class="video-preview-placeholder" id="preview-placeholder">
+                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                <span>No video loaded</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="admin-card sync-card">
+                        <h2>Connections</h2>
+                        <div class="sync-status" id="firebase-status">Firebase: checking…</div>
+                        <div class="sync-status" id="cloudinary-card-status">Cloudinary: checking…</div>
+                        <button type="button" class="btn btn-secondary" onclick="seedDefaults()">Seed default projects</button>
+                        <button type="button" class="btn btn-secondary" onclick="exportDataFile()">Download backup JSON/JS</button>
+                    </div>
+                </div>
+
+                <div class="admin-card projects-list-card">
+                    <h2>
+                        All Projects
+                        <span id="project-count" style="font-size:0.9rem; font-weight:normal; color:#888;">(0)</span>
+                    </h2>
+                    <input type="text" id="search-bar" placeholder="Search by title or credits…" oninput="renderProjectsTable()" style="max-width:400px;">
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Title</th>
+                                    <th>Pages & categories</th>
+                                    <th>Recent</th>
+                                    <th>Video</th>
+                                    <th style="width:160px;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="projects-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="status-toast" class="status-toast"></div>
+
+    <script>
+        let currentProjects = [];
+        let selectedFile = null;
+        let editingId = null;
+
+        const SPECIALTY_LABELS = {
+            cinematographer: "Cinematographer",
+            editor: "Video Editor",
+            director: "Assistant Director"
+        };
+
+        const CATEGORIES_MAP = {
+            cinematographer: ["Studio Shoots", "Event Shooting", "Organic Shoots", "Automobile Shoots", "Podcast Shoots"],
+            editor: ["Recent Cuts"],
+            director: ["Key Campaigns"]
+        };
+
+        document.getElementById("auth-form").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const errorEl = document.getElementById("auth-error");
+            const btn = document.getElementById("auth-submit");
+            errorEl.classList.remove("show");
+            btn.disabled = true;
+            btn.textContent = "Signing in…";
+            try {
+                await signInAdmin(
+                    document.getElementById("auth-email").value.trim(),
+                    document.getElementById("auth-password").value
+                );
+            } catch (err) {
+                errorEl.textContent = err.message || "Sign in failed";
+                errorEl.classList.add("show");
+                btn.disabled = false;
+                btn.textContent = "Sign in";
+            }
+        });
+
+        document.getElementById("logout-btn").addEventListener("click", async () => {
+            await signOutAdmin();
+        });
+
+        onAuthStateChanged(async (user) => {
+            const gate = document.getElementById("auth-gate");
+            const app = document.getElementById("admin-app");
+            if (user) {
+                gate.classList.add("hidden");
+                app.classList.remove("hidden");
+                document.getElementById("admin-user-email").textContent = user.email || "";
+                document.getElementById("firebase-status").textContent =
+                    `Firebase: signed in · project ${FIREBASE_CONFIG.projectId}`;
+                refreshCloudinaryStatus();
+                await loadProjects();
+            } else {
+                gate.classList.remove("hidden");
+                app.classList.add("hidden");
+                document.getElementById("auth-submit").disabled = false;
+                document.getElementById("auth-submit").textContent = "Sign in";
+            }
+        }).catch((err) => {
+            document.getElementById("auth-error").textContent = err.message;
+            document.getElementById("auth-error").classList.add("show");
+        });
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("project-form").addEventListener("submit", handleFormSubmit);
+            document.getElementById("project-video-file").addEventListener("change", handleFileSelect);
+            document.getElementById("project-video").addEventListener("change", previewFromTextField);
+
+            const dropzone = document.getElementById("file-dropzone");
+            dropzone.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                dropzone.classList.add("dragover");
+            });
+            dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+            dropzone.addEventListener("drop", (e) => {
+                e.preventDefault();
+                dropzone.classList.remove("dragover");
+                const file = e.dataTransfer.files && e.dataTransfer.files[0];
+                if (file) applySelectedFile(file);
+            });
+        });
+
+        function refreshCloudinaryStatus() {
+            const cfg = window.CLOUDINARY_CONFIG || {};
+            const hint = document.getElementById("cloudinary-status");
+            const card = document.getElementById("cloudinary-card-status");
+            if (cfg.cloudName && cfg.uploadPreset) {
+                hint.textContent = `Uploads go to Cloudinary (${cfg.cloudName}) via preset "${cfg.uploadPreset}".`;
+                card.textContent = `Cloudinary: ${cfg.cloudName} · preset ${cfg.uploadPreset}`;
+            } else {
+                hint.textContent = "Set cloudName + uploadPreset in firebase-config.js";
+                card.textContent = "Cloudinary: not configured";
+            }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById("status-toast");
+            toast.textContent = message;
+            toast.classList.add("show");
+            clearTimeout(showToast._timer);
+            showToast._timer = setTimeout(() => toast.classList.remove("show"), 2400);
+        }
+
+        async function loadProjects() {
+            currentProjects = await getCombinedProjects();
+            document.getElementById("project-count").textContent = `(${currentProjects.length})`;
+            renderProjectsTable();
+        }
+
+        async function seedDefaults() {
+            try {
+                const result = await seedDefaultsIfEmpty();
+                if (result.seeded) {
+                    showToast(`Seeded ${result.count} projects`);
+                    await loadProjects();
+                } else {
+                    alert(result.reason === "already-has-data"
+                        ? "Firestore already has projects."
+                        : "Could not seed: " + (result.reason || "unknown"));
+                }
+            } catch (err) {
+                alert(err.message || String(err));
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        function renderProjectsTable() {
+            const tbody = document.getElementById("projects-table-body");
+            const search = (document.getElementById("search-bar").value || "").toLowerCase().trim();
+            const filtered = currentProjects.filter((p) => {
+                const title = (p.title || "").toLowerCase();
+                const credits = (p.credits || "").toLowerCase();
+                return !search || title.includes(search) || credits.includes(search);
+            });
+
+            if (!filtered.length) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#666;padding:30px;">No projects found.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map((p) => {
+                const specialties = Array.isArray(p.specialties) ? p.specialties : [];
+                const categories = p.categories || {};
+                const specHTML = specialties.map((spec) => {
+                    const label = SPECIALTY_LABELS[spec] || spec;
+                    const catName = categories[spec] ? ` · ${categories[spec]}` : "";
+                    return `<span class="badge badge-tag">${escapeHtml(label)}${escapeHtml(catName)}</span>`;
+                }).join("") || `<span class="badge badge-grey">No pages</span>`;
+
+                const videoName = p.video || "—";
+                const recentHTML = p.isRecent
+                    ? `<span class="badge badge-gold">Yes</span>`
+                    : `<span class="badge badge-grey">No</span>`;
+
+                return `
+                    <tr class="${editingId === p.id ? "editing-row" : ""}">
+                        <td style="font-weight:600;">${escapeHtml(p.title)}</td>
+                        <td><div style="display:flex;flex-wrap:wrap;gap:4px;">${specHTML}</div></td>
+                        <td>${recentHTML}</td>
+                        <td style="font-family:monospace;font-size:0.85rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(videoName)}">${escapeHtml(videoName)}</td>
+                        <td class="actions-cell">
+                            <button type="button" class="btn btn-edit" onclick="editProject('${escapeHtml(p.id)}')">Edit</button>
+                            <button type="button" class="btn btn-danger" onclick="deleteProject('${escapeHtml(p.id)}')">Delete</button>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+        function toggleSpecialtyConfigs(presetCategories) {
+            const container = document.getElementById("category-configs");
+            const checkedBoxes = Array.from(document.querySelectorAll('input[name="specialty"]:checked'));
+            const presets = presetCategories || {};
+            container.innerHTML = checkedBoxes.map((cb) => {
+                const specVal = cb.value;
+                const specLabel = SPECIALTY_LABELS[specVal] || specVal;
+                const categories = CATEGORIES_MAP[specVal] || [];
+                const selected = presets[specVal] || "";
+                return `
+                    <div class="category-config-item">
+                        <label for="category-${specVal}">Category on ${specLabel} page</label>
+                        <select id="category-${specVal}" required>
+                            ${categories.map((cat) => `
+                                <option value="${escapeHtml(cat)}" ${cat === selected ? "selected" : ""}>${escapeHtml(cat)}</option>
+                            `).join("")}
+                        </select>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function setPreview(src) {
+            const player = document.getElementById("preview-player");
+            const placeholder = document.getElementById("preview-placeholder");
+            if (src) {
+                player.src = src;
+                player.style.display = "block";
+                placeholder.style.display = "none";
+            } else {
+                player.removeAttribute("src");
+                player.load();
+                player.style.display = "none";
+                placeholder.style.display = "flex";
+            }
+        }
+
+        function previewFromTextField() {
+            const value = document.getElementById("project-video").value.trim();
+            if (!selectedFile && value) setPreview(value);
+            if (!value && !selectedFile) setPreview("");
+        }
+
+        function applySelectedFile(file) {
+            selectedFile = file;
+            document.getElementById("dropzone-text").innerHTML =
+                `Selected: <strong>${escapeHtml(file.name)}</strong> (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
+            setPreview(URL.createObjectURL(file));
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files && event.target.files[0];
+            if (file) applySelectedFile(file);
+        }
+
+        function resetForm() {
+            editingId = null;
+            selectedFile = null;
+            document.getElementById("project-form").reset();
+            document.getElementById("project-id").value = "";
+            document.getElementById("project-video").value = "";
+            document.getElementById("project-video-file").value = "";
+            document.getElementById("dropzone-text").innerHTML = `Drop an MP4/MOV here or <span>browse</span>`;
+            document.getElementById("category-configs").innerHTML = "";
+            document.getElementById("form-title").textContent = "Add Project";
+            document.getElementById("submit-btn").textContent = "Add Project";
+            document.getElementById("cancel-btn").style.display = "none";
+            document.getElementById("upload-progress").style.display = "none";
+            document.getElementById("upload-progress-bar").style.width = "0%";
+            setPreview("");
+            renderProjectsTable();
+        }
+
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            const existingId = document.getElementById("project-id").value.trim();
+            const id = existingId || `work-${Date.now()}`;
+            const title = document.getElementById("project-title").value.trim();
+            const credits = document.getElementById("project-credits").value.trim();
+            let video = document.getElementById("project-video").value.trim();
+            const isRecent = document.getElementById("project-recent").checked;
+            const specialties = Array.from(document.querySelectorAll('input[name="specialty"]:checked')).map((cb) => cb.value);
+
+            if (!title || !credits) {
+                alert("Please fill in Project title and Credits.");
+                return;
+            }
+            if (!specialties.length) {
+                alert("Select at least one page.");
+                return;
+            }
+
+            const categories = {};
+            specialties.forEach((spec) => {
+                const select = document.getElementById(`category-${spec}`);
+                if (select) categories[spec] = select.value;
+            });
+
+            const existing = currentProjects.find((p) => p.id === id);
+            const submitBtn = document.getElementById("submit-btn");
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+
+            const progressWrap = document.getElementById("upload-progress");
+            const progressBar = document.getElementById("upload-progress-bar");
+            const progressText = document.getElementById("upload-progress-text");
+
+            try {
+                if (selectedFile) {
+                    progressWrap.style.display = "block";
+                    progressBar.style.width = "0%";
+                    progressText.textContent = "Uploading to Cloudinary…";
+                    submitBtn.textContent = "Uploading…";
+
+                    const uploaded = await uploadToCloudinary(selectedFile, (pct) => {
+                        progressBar.style.width = pct + "%";
+                        progressText.textContent = `Uploading to Cloudinary… ${pct}%`;
+                        submitBtn.textContent = `Uploading ${pct}%`;
+                    });
+                    video = uploaded.url;
+                    setPreview(video);
+                } else if (!video && existing) {
+                    video = existing.video || "";
+                }
+
+                submitBtn.textContent = "Saving…";
+                await saveCustomProject({
+                    id,
+                    title,
+                    credits,
+                    video,
+                    specialties,
+                    categories,
+                    isRecent,
+                    isDeleted: false
+                });
+
+                const wasEdit = Boolean(existingId);
+                resetForm();
+                await loadProjects();
+                showToast(wasEdit ? "Project updated in Firestore" : "Project added to Firestore");
+            } catch (err) {
+                console.error(err);
+                alert("Could not save project: " + (err.message || err));
+                submitBtn.textContent = originalText;
+            } finally {
+                submitBtn.disabled = false;
+                if (submitBtn.textContent === "Saving…" || submitBtn.textContent.startsWith("Uploading")) {
+                    submitBtn.textContent = originalText;
+                }
+            }
+        }
+
+        function editProject(id) {
+            const p = currentProjects.find((item) => item.id === id);
+            if (!p) return;
+
+            editingId = id;
+            selectedFile = null;
+            document.getElementById("project-video-file").value = "";
+            document.getElementById("dropzone-text").innerHTML = `Drop an MP4/MOV here or <span>browse</span>`;
+            document.getElementById("project-id").value = p.id;
+            document.getElementById("project-title").value = p.title || "";
+            document.getElementById("project-credits").value = p.credits || "";
+            document.getElementById("project-video").value = p.video || "";
+            document.getElementById("project-recent").checked = Boolean(p.isRecent);
+
+            const specialties = Array.isArray(p.specialties) ? p.specialties : [];
+            document.querySelectorAll('input[name="specialty"]').forEach((cb) => {
+                cb.checked = specialties.includes(cb.value);
+            });
+            toggleSpecialtyConfigs(p.categories || {});
+
+            document.getElementById("form-title").textContent = "Edit Project";
+            document.getElementById("submit-btn").textContent = "Save Changes";
+            document.getElementById("cancel-btn").style.display = "inline-block";
+            setPreview(p.video || "");
+            renderProjectsTable();
+            document.getElementById("form-card").scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+
+        async function deleteProject(id) {
+            const p = currentProjects.find((item) => item.id === id);
+            if (!p) return;
+            if (!confirm(`Delete "${p.title}" from Firestore?`)) return;
+
+            try {
+                await deleteCustomProject(id);
+                if (editingId === id) resetForm();
+                await loadProjects();
+                showToast("Project deleted");
+            } catch (err) {
+                alert("Could not delete: " + (err.message || err));
+            }
+        }
+
+        function exportDataFile() {
+            const cleaned = currentProjects.map((p) => {
+                const item = { ...p };
+                delete item.updatedAt;
+                return item;
+            });
+            const content = `window.DEFAULT_PROJECTS = ${JSON.stringify(cleaned, null, 2)};\n`;
+            const blob = new Blob([content], { type: "text/javascript;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "projects-data.js";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast("Backup downloaded");
+        }
+    </script>
+</body>
+</html>
