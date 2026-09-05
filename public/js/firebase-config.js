@@ -2,13 +2,13 @@
  * Public Firebase web config (safe to expose in the browser).
  */
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDbEpiSmeyOlOFc7IXDGRMn7STImok4IBk",
-  authDomain: "fazil-port.firebaseapp.com",
-  projectId: "fazil-port",
-  storageBucket: "fazil-port.firebasestorage.app",
-  messagingSenderId: "55634452580",
-  appId: "1:55634452580:web:f6a5d22ce55128f764bf71",
-  measurementId: "G-RVEC1YYK2B"
+  apiKey: "AIzaSyD4RSfohekFamSeptdt0R3Sx3pI0rpxLfU",
+  authDomain: "fazilzaan.firebaseapp.com",
+  projectId: "fazilzaan",
+  storageBucket: "fazilzaan.firebasestorage.app",
+  messagingSenderId: "261196574156",
+  appId: "1:261196574156:web:f9af6d60bfe5e1d75c0169",
+  measurementId: "G-JBMYMQWLXJ"
 };
 
 /**
