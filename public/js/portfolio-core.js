@@ -207,7 +207,12 @@
         reject(new Error(message));
       };
 
-      xhr.onerror = () => reject(new Error("Network error while uploading to Cloudinary"));
+      xhr.onerror = () =>
+        reject(
+          new Error(
+            "Network error while uploading to Cloudinary. Disable AdBlocker/Brave Shields or check video file size."
+          )
+        );
       xhr.send(formData);
     });
   }
