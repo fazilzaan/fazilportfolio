@@ -216,15 +216,24 @@
   }
 
   /**
-   * Primary uploader: tries Cloudflare R2 first, falls back to Cloudinary if R2 is unconfigured.
+   * Primary uploader:
+   * - Uses Cloudflare R2 via server.py when running locally (localhost/127.0.0.1).
+   * - Uses Cloudinary direct browser upload when running live on Firebase Hosting.
    */
   async function uploadToCloudinary(file, onProgress) {
-    try {
-      return await uploadToR2(file, onProgress);
-    } catch (r2Error) {
-      console.warn("R2 upload not available, falling back to Cloudinary direct upload...", r2Error.message);
-      return uploadToCloudinaryDirect(file, onProgress);
+    const isLocal =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    if (isLocal) {
+      try {
+        return await uploadToR2(file, onProgress);
+      } catch (r2Error) {
+        console.warn("R2 upload error, falling back to Cloudinary...", r2Error.message);
+      }
     }
+
+    return uploadToCloudinaryDirect(file, onProgress);
   }
 
   function uploadToCloudinaryDirect(file, onProgress) {
