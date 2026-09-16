@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import hmac
 import json
@@ -17,7 +18,7 @@ from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
@@ -26,7 +27,7 @@ ENV_PATH = ROOT / ".env"
 COOKIE_NAME = "fazil_admin_session"
 SESSION_TTL_SECONDS = 60 * 60 * 12  # 12 hours
 BLOCKED_FILES = {".env", ".env.example", "server.py", ".gitignore"}
-MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # 500 MB
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -51,9 +52,90 @@ CLOUDINARY_API_KEY = ENV.get("CLOUDINARY_API_KEY", "").strip()
 CLOUDINARY_API_SECRET = ENV.get("CLOUDINARY_API_SECRET", "").strip()
 CLOUDINARY_FOLDER = ENV.get("CLOUDINARY_FOLDER", "fazil-portfolio").strip() or "fazil-portfolio"
 
+# Cloudflare R2 Settings
+R2_ACCOUNT_ID = ENV.get("R2_ACCOUNT_ID", "").strip()
+R2_BUCKET_NAME = ENV.get("R2_BUCKET_NAME", "fazil-portfolio").strip()
+R2_PUBLIC_URL = ENV.get("R2_PUBLIC_URL", "").strip()
+R2_ACCESS_KEY_ID = ENV.get("R2_ACCESS_KEY_ID", "").strip()
+R2_SECRET_ACCESS_KEY = ENV.get("R2_SECRET_ACCESS_KEY", "").strip()
+
 
 def cloudinary_configured() -> bool:
     return bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
+
+
+def r2_configured() -> bool:
+    return bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME and R2_PUBLIC_URL)
+
+
+def generate_r2_presigned_url(filename: str, content_type: str = "video/mp4", expires_in: int = 3600) -> dict[str, str]:
+    if not r2_configured():
+        raise RuntimeError("Cloudflare R2 is not configured in .env")
+
+    ext = Path(filename).suffix.lower() or ".mp4"
+    safe_id = f"video_{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
+    object_key = safe_id
+
+    host = f"{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+    endpoint = f"https://{host}/{R2_BUCKET_NAME}/{object_key}"
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+    datestamp = now.strftime("%Y%m%d")
+
+    region = "auto"
+    service = "s3"
+    credential_scope = f"{datestamp}/{region}/{service}/aws4_request"
+
+    query_params = {
+        "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+        "X-Amz-Credential": f"{R2_ACCESS_KEY_ID}/{credential_scope}",
+        "X-Amz-Date": amz_date,
+        "X-Amz-Expires": str(expires_in),
+        "X-Amz-SignedHeaders": "host",
+    }
+
+    sorted_query = "&".join(
+        f"{quote(k, safe='')}={quote(query_params[k], safe='')}"
+        for k in sorted(query_params.keys())
+    )
+
+    canonical_request = "\n".join([
+        "PUT",
+        f"/{R2_BUCKET_NAME}/{object_key}",
+        sorted_query,
+        f"host:{host}\n",
+        "host",
+        "UNSIGNED-PAYLOAD"
+    ])
+
+    string_to_sign = "\n".join([
+        "AWS4-HMAC-SHA256",
+        amz_date,
+        credential_scope,
+        hashlib.sha256(canonical_request.encode("utf-8")).hexdigest()
+    ])
+
+    def sign(key: bytes, msg: str) -> bytes:
+        return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
+
+    k_date = sign(f"AWS4{R2_SECRET_ACCESS_KEY}".encode("utf-8"), datestamp)
+    k_region = sign(k_date, region)
+    k_service = sign(k_region, service)
+    k_signing = sign(k_service, "aws4_request")
+
+    signature = hmac.new(k_signing, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    upload_url = f"{endpoint}?{sorted_query}&X-Amz-Signature={signature}"
+    public_base = R2_PUBLIC_URL.rstrip("/")
+    public_url = f"{public_base}/{object_key}"
+
+    return {
+        "uploadUrl": upload_url,
+        "publicUrl": public_url,
+        "objectKey": object_key
+    }
+
 
 
 def sign_session(issued_at: int) -> str:
@@ -224,6 +306,18 @@ class PortfolioHandler(SimpleHTTPRequestHandler):
             )
             return
 
+        if path == "/api/r2/status":
+            self._json_response(
+                200,
+                {
+                    "ok": True,
+                    "configured": r2_configured(),
+                    "bucket": R2_BUCKET_NAME if r2_configured() else None,
+                    "publicUrl": R2_PUBLIC_URL if r2_configured() else None,
+                },
+            )
+            return
+
         if path in ("/admin", "/admin/", "/admin.html"):
             # Admin UI is gated by Firebase Auth in the browser (works on Hosting too).
             self.path = "/admin.html"
@@ -252,6 +346,13 @@ class PortfolioHandler(SimpleHTTPRequestHandler):
 
         return SimpleHTTPRequestHandler.do_HEAD(self)
 
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.end_headers()
+
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -264,7 +365,28 @@ class PortfolioHandler(SimpleHTTPRequestHandler):
             self._handle_upload()
             return
 
+        if path == "/api/r2/presigned-url":
+            self._handle_r2_presigned_url()
+            return
+
         self.send_error(404, "Not Found")
+
+    def _handle_r2_presigned_url(self):
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        raw = self.rfile.read(length) if length > 0 else b"{}"
+        try:
+            body = json.loads(raw.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            body = {}
+
+        filename = body.get("filename") or "video.mp4"
+        content_type = body.get("contentType") or "video/mp4"
+
+        try:
+            data = generate_r2_presigned_url(filename, content_type)
+            self._json_response(200, {"ok": True, **data})
+        except Exception as err:
+            self._json_response(500, {"ok": False, "error": str(err)})
 
     def _handle_login(self):
         length = int(self.headers.get("Content-Length", "0"))
@@ -409,6 +531,9 @@ class PortfolioHandler(SimpleHTTPRequestHandler):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -420,13 +545,12 @@ class PortfolioHandler(SimpleHTTPRequestHandler):
 def main():
     if not ADMIN_PASSWORD:
         print("Warning: ADMIN_PASSWORD is missing in .env — admin login will fail.")
-    if not cloudinary_configured():
-        print(
-            "Warning: Cloudinary not configured. Add CLOUDINARY_CLOUD_NAME, "
-            "CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET to .env"
-        )
-    else:
+    if r2_configured():
+        print(f"Cloudflare R2 ready: bucket={R2_BUCKET_NAME}, public_url={R2_PUBLIC_URL}")
+    elif cloudinary_configured():
         print(f"Cloudinary ready: cloud={CLOUDINARY_CLOUD_NAME}, folder={CLOUDINARY_FOLDER}")
+    else:
+        print("Warning: Neither Cloudflare R2 nor Cloudinary configured in .env")
 
     os.chdir(PUBLIC_ROOT)
     ThreadingHTTPServer.allow_reuse_address = True

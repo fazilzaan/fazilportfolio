@@ -14,18 +14,19 @@
   }
 
   function cardHtml(project, options) {
-    const video = project.video || "";
+    const rawVideo = project.video || "";
+    const video = rawVideo ? (rawVideo.includes("#t=") ? rawVideo : `${rawVideo}#t=0.1`) : "";
     const title = escapeHtml(project.title);
     const credits = escapeHtml(project.credits);
     const useSlate = options && options.variant === "slate";
 
     if (useSlate) {
       return `
-        <div class="work-card reveal" ${video ? `data-video="${escapeHtml(video)}"` : ""}>
+        <div class="work-card reveal" ${rawVideo ? `data-video="${escapeHtml(rawVideo)}"` : ""}>
           <div class="work-card-media">
             ${
               video
-                ? `<video src="${escapeHtml(video)}" loop muted playsinline class="work-card-video"></video>
+                ? `<video src="${escapeHtml(video)}" preload="metadata" loop muted playsinline class="work-card-video"></video>
                    <div class="play-indicator"><div class="play-icon"></div></div>`
                 : `<div class="slate-indicator">🎬</div>`
             }
@@ -39,11 +40,11 @@
     }
 
     return `
-      <div class="work-card reveal" ${video ? `data-video="${escapeHtml(video)}"` : ""}>
+      <div class="work-card reveal" ${rawVideo ? `data-video="${escapeHtml(rawVideo)}"` : ""}>
         <div class="work-card-media">
           ${
             video
-              ? `<video src="${escapeHtml(video)}" loop muted playsinline class="work-card-video"></video>`
+              ? `<video src="${escapeHtml(video)}" preload="metadata" loop muted playsinline class="work-card-video"></video>`
               : ""
           }
           <div class="play-indicator">
@@ -89,12 +90,21 @@
     scope.querySelectorAll(".work-card").forEach((card) => {
       const video = card.querySelector(".work-card-video");
       if (video) {
+        const seekFrame = () => {
+          if (video.paused && (video.currentTime === 0 || isNaN(video.currentTime))) {
+            try { video.currentTime = 0.1; } catch (e) {}
+          }
+        };
+        video.addEventListener("loadedmetadata", seekFrame);
+        video.addEventListener("loadeddata", seekFrame);
+        if (video.readyState >= 1) seekFrame();
+
         card.addEventListener("mouseenter", () => {
           video.play().catch(() => {});
         });
         card.addEventListener("mouseleave", () => {
           video.pause();
-          video.currentTime = 0;
+          try { video.currentTime = 0.1; } catch (e) {}
         });
       }
 

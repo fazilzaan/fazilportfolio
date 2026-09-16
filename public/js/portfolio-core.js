@@ -159,13 +159,79 @@
   }
 
   /**
-   * Upload a video to Cloudinary using an unsigned preset (browser-safe).
+   * Upload a video to Cloudflare R2 object storage directly via presigned URL.
    */
-  function uploadToCloudinary(file, onProgress) {
+  async function uploadToR2(file, onProgress) {
+    const filename = file.name || "video.mp4";
+    const contentType = file.type || "video/mp4";
+
+    // 1. Get presigned upload URL from server
+    const res = await fetch("/api/r2/presigned-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename, contentType })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `R2 Presigned URL error (${res.status})`);
+    }
+
+    const data = await res.json();
+    if (!data.ok || !data.uploadUrl || !data.publicUrl) {
+      throw new Error(data.error || "Invalid response from R2 presigned URL endpoint");
+    }
+
+    // 2. Perform direct PUT upload to Cloudflare R2
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", data.uploadUrl);
+      xhr.setRequestHeader("Content-Type", contentType);
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable || !onProgress) return;
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve({
+            url: data.publicUrl,
+            publicId: data.objectKey,
+            format: filename.split(".").pop(),
+            bytes: file.size
+          });
+        } else {
+          reject(new Error(`R2 upload failed with status ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () =>
+        reject(
+          new Error("Network error while uploading to Cloudflare R2 (Check CORS configuration in R2 dashboard)")
+        );
+
+      xhr.send(file);
+    });
+  }
+
+  /**
+   * Primary uploader: tries Cloudflare R2 first, falls back to Cloudinary if R2 is unconfigured.
+   */
+  async function uploadToCloudinary(file, onProgress) {
+    try {
+      return await uploadToR2(file, onProgress);
+    } catch (r2Error) {
+      console.warn("R2 upload not available, falling back to Cloudinary direct upload...", r2Error.message);
+      return uploadToCloudinaryDirect(file, onProgress);
+    }
+  }
+
+  function uploadToCloudinaryDirect(file, onProgress) {
     const cfg = global.CLOUDINARY_CONFIG || {};
     if (!cfg.cloudName || !cfg.uploadPreset) {
       return Promise.reject(
-        new Error("Cloudinary is not configured. Set cloudName and uploadPreset in firebase-config.js")
+        new Error("Neither Cloudflare R2 nor Cloudinary is configured.")
       );
     }
 
@@ -207,16 +273,12 @@
         reject(new Error(message));
       };
 
-      xhr.onerror = () =>
-        reject(
-          new Error(
-            "Network error while uploading to Cloudinary. Disable AdBlocker/Brave Shields or check video file size."
-          )
-        );
+      xhr.onerror = () => reject(new Error("Network error while uploading video"));
       xhr.send(formData);
     });
   }
 
+  global.uploadToR2 = uploadToR2;
   global.initFirebase = initFirebase;
   global.getCustomProjects = getCustomProjects;
   global.saveCustomProject = saveCustomProject;
