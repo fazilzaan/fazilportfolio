@@ -67,10 +67,7 @@
     return (projects || []).filter((p) => {
       if (p.isDeleted) return false;
       if (recentOnly) {
-        // Prefer featured/recent items; if none are marked, show all so admin adds appear
-        const anyRecent = (projects || []).some((item) => !item.isDeleted && item.isRecent);
-        if (anyRecent) return Boolean(p.isRecent);
-        return true;
+        return Boolean(p.isRecent);
       }
       if (!specialty) return true;
       const specs = Array.isArray(p.specialties) ? p.specialties : [];
