@@ -162,30 +162,46 @@
 
   /**
    * Upload a video to Cloudflare R2 object storage directly via presigned URL.
-   * Supports files up to 5GB with zero bandwidth fees.
+   * Supports files up to 5GB with zero bandwidth fees on both local and live.
    */
   async function uploadToR2(file, onProgress) {
     const filename = file.name || "video.mp4";
     const contentType = file.type || "video/mp4";
 
-    // 1. Get presigned upload URL from local server.py
-    const res = await fetch("/api/r2/presigned-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename, contentType })
-    });
+    let data = null;
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `R2 Presigned URL error (${res.status})`);
+    // 1. Try local server.py presigned endpoint first
+    try {
+      const res = await fetch("/api/r2/presigned-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename, contentType })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.ok) data = json;
+      }
+    } catch (e) {}
+
+    // 2. If local server is not available (on live hosting), call Cloudflare Worker
+    if (!data) {
+      const res = await fetch(R2_WORKER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename, contentType })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `R2 Worker Presigned error (${res.status})`);
+      }
+      data = await res.json();
     }
 
-    const data = await res.json();
-    if (!data.ok || !data.uploadUrl || !data.publicUrl) {
-      throw new Error(data.error || "Invalid response from R2 presigned URL endpoint");
+    if (!data || !data.ok || !data.uploadUrl || !data.publicUrl) {
+      throw new Error((data && data.error) || "Invalid response from R2 presigned URL endpoint");
     }
 
-    // 2. Perform direct PUT upload to Cloudflare R2 S3 storage
+    // 3. Perform direct PUT upload to Cloudflare R2 S3 storage
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", data.uploadUrl);
