@@ -244,15 +244,66 @@
       );
     }
 
+    const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB chunks
+    const totalSize = file.size;
+    const url = `https://api.cloudinary.com/v1_1/${cfg.cloudName}/video/upload`;
+
+    // For files <= 10MB, standard single request
+    if (totalSize <= CHUNK_SIZE) {
+      return uploadCloudinaryPart(file, 0, totalSize, totalSize, null, cfg, url, onProgress);
+    }
+
+    // For files > 10MB (e.g. 152.8 MB), upload in 10MB chunks using X-Unique-Upload-Id & Content-Range
+    const uniqueUploadId = "cld_up_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+
+    return (async () => {
+      let start = 0;
+      let lastResponse = null;
+
+      while (start < totalSize) {
+        const end = Math.min(start + CHUNK_SIZE, totalSize);
+        const chunk = file.slice(start, end);
+        const contentRange = `bytes ${start}-${end - 1}/${totalSize}`;
+
+        lastResponse = await uploadCloudinaryPart(
+          chunk,
+          start,
+          end,
+          totalSize,
+          { uniqueUploadId, contentRange },
+          cfg,
+          url,
+          (chunkProgress) => {
+            if (onProgress) {
+              const uploadedBytes = start + (chunk.size * chunkProgress) / 100;
+              const overallPercent = Math.min(99, Math.round((uploadedBytes / totalSize) * 100));
+              onProgress(overallPercent);
+            }
+          }
+        );
+
+        start = end;
+      }
+
+      if (onProgress) onProgress(100);
+      return lastResponse;
+    })();
+  }
+
+  function uploadCloudinaryPart(blob, start, end, totalSize, chunkHeaders, cfg, url, onProgress) {
     return new Promise((resolve, reject) => {
-      const url = `https://api.cloudinary.com/v1_1/${cfg.cloudName}/video/upload`;
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", blob);
       formData.append("upload_preset", cfg.uploadPreset);
       if (cfg.folder) formData.append("folder", cfg.folder);
 
       const xhr = new XMLHttpRequest();
       xhr.open("POST", url);
+
+      if (chunkHeaders) {
+        xhr.setRequestHeader("X-Unique-Upload-Id", chunkHeaders.uniqueUploadId);
+        xhr.setRequestHeader("Content-Range", chunkHeaders.contentRange);
+      }
 
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable || !onProgress) return;
@@ -267,13 +318,18 @@
           reject(new Error("Invalid response from Cloudinary"));
           return;
         }
-        if (xhr.status >= 200 && xhr.status < 300 && data.secure_url) {
-          resolve({
-            url: data.secure_url,
-            publicId: data.public_id,
-            format: data.format,
-            bytes: data.bytes
-          });
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (data && data.secure_url) {
+            resolve({
+              url: data.secure_url,
+              publicId: data.public_id,
+              format: data.format,
+              bytes: data.bytes
+            });
+          } else {
+            // Intermediate 200 OK chunk response
+            resolve(data || { success: true });
+          }
           return;
         }
         const message =
@@ -282,7 +338,7 @@
         reject(new Error(message));
       };
 
-      xhr.onerror = () => reject(new Error("Network error while uploading video"));
+      xhr.onerror = () => reject(new Error("Network error while uploading video to Cloudinary"));
       xhr.send(formData);
     });
   }
