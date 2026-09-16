@@ -158,35 +158,21 @@
     return auth.signOut();
   }
 
+  const R2_WORKER_URL = "https://fazil-r2-upload.zaanfazil.workers.dev/";
+
   /**
-   * Upload a video to Cloudflare R2 object storage directly via presigned URL.
+   * Upload a video to Cloudflare R2 via Cloudflare Worker.
+   * Works on both localhost and live hosting (Firebase) with no file size limits.
    */
   async function uploadToR2(file, onProgress) {
     const filename = file.name || "video.mp4";
     const contentType = file.type || "video/mp4";
 
-    // 1. Get presigned upload URL from server
-    const res = await fetch("/api/r2/presigned-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename, contentType })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `R2 Presigned URL error (${res.status})`);
-    }
-
-    const data = await res.json();
-    if (!data.ok || !data.uploadUrl || !data.publicUrl) {
-      throw new Error(data.error || "Invalid response from R2 presigned URL endpoint");
-    }
-
-    // 2. Perform direct PUT upload to Cloudflare R2
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("PUT", data.uploadUrl);
+      xhr.open("POST", R2_WORKER_URL);
       xhr.setRequestHeader("Content-Type", contentType);
+      xhr.setRequestHeader("X-Filename", filename);
 
       xhr.upload.onprogress = (event) => {
         if (!event.lengthComputable || !onProgress) return;
@@ -194,21 +180,26 @@
       };
 
       xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
+        let data = null;
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch (e) {}
+        if (xhr.status >= 200 && xhr.status < 300 && data && data.ok) {
           resolve({
-            url: data.publicUrl,
-            publicId: data.objectKey,
+            url: data.url,
+            publicId: data.key,
             format: filename.split(".").pop(),
             bytes: file.size
           });
         } else {
-          reject(new Error(`R2 upload failed with status ${xhr.status}`));
+          const msg = (data && data.error) || `R2 Worker upload failed (${xhr.status})`;
+          reject(new Error(msg));
         }
       };
 
       xhr.onerror = () =>
         reject(
-          new Error("Network error while uploading to Cloudflare R2 (Check CORS configuration in R2 dashboard)")
+          new Error("Network error while uploading to Cloudflare R2 Worker")
         );
 
       xhr.send(file);
@@ -216,24 +207,15 @@
   }
 
   /**
-   * Primary uploader:
-   * - Uses Cloudflare R2 via server.py when running locally (localhost/127.0.0.1).
-   * - Uses Cloudinary direct browser upload when running live on Firebase Hosting.
+   * Primary uploader: uses Cloudflare R2 Worker for all video uploads (no file size limit, 0 bandwidth fee).
    */
   async function uploadToCloudinary(file, onProgress) {
-    const isLocal =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    if (isLocal) {
-      try {
-        return await uploadToR2(file, onProgress);
-      } catch (r2Error) {
-        console.warn("R2 upload error, falling back to Cloudinary...", r2Error.message);
-      }
+    try {
+      return await uploadToR2(file, onProgress);
+    } catch (r2Error) {
+      console.warn("R2 Worker upload failed, trying Cloudinary fallback...", r2Error.message);
+      return uploadToCloudinaryDirect(file, onProgress);
     }
-
-    return uploadToCloudinaryDirect(file, onProgress);
   }
 
   function uploadToCloudinaryDirect(file, onProgress) {
