@@ -410,7 +410,7 @@
         <main>
             <div class="page-header">
                 <h1>Creative Admin Dashboard</h1>
-                <p>Projects save to Firestore. Videos upload to Cloudinary. Deploy the site with Firebase Hosting.</p>
+                <p>Projects save to Firestore. Videos upload to Cloudflare R2. Deploy the site with Firebase Hosting.</p>
             </div>
 
             <div class="admin-grid">
@@ -451,12 +451,12 @@
 
                         <div class="form-group">
                             <label for="project-video">Video URL</label>
-                            <input type="text" id="project-video" placeholder="Cloudinary URL or existing video link">
-                            <p class="hint">Filled automatically after Cloudinary upload, or paste a URL.</p>
+                            <input type="text" id="project-video" placeholder="Cloudflare R2 URL or existing video link">
+                            <p class="hint">Filled automatically after R2 upload, or paste a URL.</p>
                         </div>
 
                         <div class="form-group">
-                            <label>Upload video to Cloudinary</label>
+                            <label>Upload video to Cloudflare R2</label>
                             <div class="file-dropzone" id="file-dropzone">
                                 <div class="file-dropzone-text" id="dropzone-text">Drop an MP4/MOV here or <span>browse</span></div>
                                 <input type="file" id="project-video-file" accept="video/mp4,video/quicktime,video/*">
@@ -467,7 +467,7 @@
                                 </div>
                                 <p class="hint" id="upload-progress-text">Uploading…</p>
                             </div>
-                            <p class="hint" id="cloudinary-status">Cloudinary unsigned upload ready when preset is configured.</p>
+                            <p class="hint" id="cloudinary-status">Cloudflare R2 object storage (fazil-portfolio) ready.</p>
                         </div>
 
                         <div class="form-group">
@@ -499,7 +499,7 @@
                     <div class="admin-card sync-card">
                         <h2>Connections</h2>
                         <div class="sync-status" id="firebase-status">Firebase: checking…</div>
-                        <div class="sync-status" id="cloudinary-card-status">Cloudinary: checking…</div>
+                        <div class="sync-status" id="cloudinary-card-status">Cloudflare R2: fazil-portfolio</div>
                         <button type="button" class="btn btn-secondary" onclick="seedDefaults()">Seed default projects</button>
                         <button type="button" class="btn btn-secondary" onclick="exportDataFile()">Download backup JSON/JS</button>
                     </div>
@@ -615,16 +615,10 @@
         });
 
         function refreshCloudinaryStatus() {
-            const cfg = window.CLOUDINARY_CONFIG || {};
             const hint = document.getElementById("cloudinary-status");
             const card = document.getElementById("cloudinary-card-status");
-            if (cfg.cloudName && cfg.uploadPreset) {
-                hint.textContent = `Uploads go to Cloudinary (${cfg.cloudName}) via preset "${cfg.uploadPreset}".`;
-                card.textContent = `Cloudinary: ${cfg.cloudName} · preset ${cfg.uploadPreset}`;
-            } else {
-                hint.textContent = "Set cloudName + uploadPreset in firebase-config.js";
-                card.textContent = "Cloudinary: not configured";
-            }
+            hint.textContent = "Uploads go directly to Cloudflare R2 (fazil-portfolio).";
+            card.textContent = "Cloudflare R2: fazil-portfolio";
         }
 
         function showToast(message) {
@@ -819,12 +813,12 @@
                 if (selectedFile) {
                     progressWrap.style.display = "block";
                     progressBar.style.width = "0%";
-                    progressText.textContent = "Uploading to Cloudinary…";
+                    progressText.textContent = "Uploading to Cloudflare R2…";
                     submitBtn.textContent = "Uploading…";
 
                     const uploaded = await uploadToCloudinary(selectedFile, (pct) => {
                         progressBar.style.width = pct + "%";
-                        progressText.textContent = `Uploading to Cloudinary… ${pct}%`;
+                        progressText.textContent = `Uploading to Cloudflare R2… ${pct}%`;
                         submitBtn.textContent = `Uploading ${pct}%`;
                     });
                     video = uploaded.url;
